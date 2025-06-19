@@ -1,0 +1,29 @@
+<div id="emotion_settings">
+  <div class="inline-drawer">
+    <div class="inline-drawer-toggle inline-drawer-header">
+      <div class="flex-container alignitemscenter margin0">
+        <b>Emotion Plugin Settings</b>
+      </div>
+      <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
+    </div>
+    <div class="inline-drawer-content">
+      <label for="emotion_position">Injection Position:</label>
+      <select id="emotion_position">
+        <option value="-1">None</option>
+        <option value="2">Before Main Prompt</option>
+        <option value="0">After Main Prompt</option>
+        <option value="1" selected>In-chat @ Depth</option>
+      </select><br>
+
+      <label for="emotion_depth">Injection Depth:</label>
+      <input id="emotion_depth" type="number" min="0" value="1"><br>
+
+      <label for="emotion_role">Injected As:</label>
+      <select id="emotion_role">
+        <option value="0">System</option>
+        <option value="1">User</option>
+        <option value="2">Assistant</option>
+      </select>
+    </div>
+  </div>
+</div>
