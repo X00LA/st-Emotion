@@ -81,7 +81,7 @@ How should ${charName} be feeling about this interaction? Provide a thoughtful e
     try {
         const response = await fetch("http://192.168.1.125:5000/v1/completions", {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', model: 'llama-3.1-8b-lexi-v2' },
             body: JSON.stringify({
                 prompt: emotionPrompt,
                 max_tokens: 1200,
