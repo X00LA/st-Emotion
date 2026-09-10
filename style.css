@@ -1,1 +1,12 @@
+#emotion_settings .emotion_connection_row {
+    gap: 10px;
+    margin: 5px 0;
+}
 
+#emotion_connection_status.emotion-status-ok {
+    color: #4caf50;
+}
+
+#emotion_connection_status.emotion-status-fail {
+    color: #f44336;
+}
