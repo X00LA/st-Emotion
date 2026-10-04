@@ -79,44 +79,71 @@ function loadSettings() {
     return extension_settings[MODULE_NAME];
 }
 
-async function testConnection() {
+const TEST_PROMPT = "Reply with the single word OK.";
+
+/**
+ * Tests the selected backend.
+ * Started by the button (manual), it generates a short test reply and reports the result as a notification.
+ * The automatic test on page load only checks availability, so it neither uses tokens nor loads a WebLLM model.
+ * @param {boolean} manual Whether the test was started with the button
+ */
+async function testConnection(manual = false) {
     const settings = extension_settings[MODULE_NAME];
     const $status = $("#emotion_connection_status");
-    const setStatus = (ok, text) => {
+    const report = (ok, text) => {
         $status.removeClass("emotion-status-ok emotion-status-fail")
             .addClass(ok ? "emotion-status-ok" : "emotion-status-fail")
             .text(text);
+        if (manual) {
+            toastr[ok ? "success" : "error"](text, "st-Emotion");
+        }
+    };
+    const reportReply = (reply) => {
+        const text = String(reply ?? "").trim();
+        if (text) {
+            report(true, `Working – model replied: "${text.slice(0, 60)}"`);
+        } else {
+            report(false, "The backend returned no text");
+        }
     };
     $status.removeClass("emotion-status-ok emotion-status-fail").text("Testing connection...");
 
-    if (settings.backend === BACKENDS.WEBLLM) {
-        // Only check availability, a test generation would start the model download
-        if (isWebLlmSupported()) {
-            setStatus(true, "WebLLM extension available");
-        } else {
-            setStatus(false, "WebLLM not available (extension missing or no WebGPU)");
-        }
-        return;
-    }
-
-    if (settings.backend === BACKENDS.MAIN) {
-        if (getContext().onlineStatus === "no_connection") {
-            setStatus(false, "SillyTavern is not connected to an API");
-        } else {
-            setStatus(true, "Using SillyTavern's connected API");
-        }
-        return;
-    }
-
-    if (!settings.apiUrl) {
-        setStatus(false, "No API URL set");
-        return;
-    }
-
     try {
+        if (settings.backend === BACKENDS.WEBLLM) {
+            if (!isWebLlmSupported()) {
+                report(false, "WebLLM not available (extension missing or no WebGPU)");
+                return;
+            }
+            if (!manual) {
+                report(true, "WebLLM available – click Test Connection to try a generation");
+                return;
+            }
+            $status.text("Testing... (loading the WebLLM model can take a while)");
+            reportReply(await generateWebLlmChatPrompt([{ role: "user", content: TEST_PROMPT }], { max_tokens: 10 }));
+            return;
+        }
+
+        if (settings.backend === BACKENDS.MAIN) {
+            if (getContext().onlineStatus === "no_connection") {
+                report(false, "SillyTavern is not connected to an API");
+                return;
+            }
+            if (!manual) {
+                report(true, "SillyTavern is connected – click Test Connection to try a generation");
+                return;
+            }
+            reportReply(await generateRaw({ prompt: TEST_PROMPT, responseLength: 10 }));
+            return;
+        }
+
+        if (!settings.apiUrl) {
+            report(false, "No API URL set");
+            return;
+        }
+
         const body = {
-            prompt: "Hi",
-            max_tokens: 1
+            prompt: manual ? TEST_PROMPT : "Hi",
+            max_tokens: manual ? 10 : 1
         };
         if (settings.model) {
             body.model = settings.model;
@@ -133,15 +160,19 @@ async function testConnection() {
         }
 
         const data = await response.json();
-        const hasResult = data?.choices?.[0]?.text !== undefined || data?.generated_text !== undefined;
-        if (!hasResult) {
-            throw new Error("unexpected response format");
+        const reply = data?.choices?.[0]?.text ?? data?.generated_text;
+        if (reply === undefined) {
+            throw new Error("unexpected response format, is this a text completion endpoint?");
         }
 
-        setStatus(true, "Connected – endpoint responded correctly");
+        if (manual) {
+            reportReply(reply);
+        } else {
+            report(true, "Connected – endpoint responded correctly");
+        }
     } catch (error) {
         console.error("Emotion Plugin: Connection test failed", error);
-        setStatus(false, `Connection failed (${error.message})`);
+        report(false, `Connection failed (${error.message})`);
     }
 }
 
@@ -197,7 +228,7 @@ function bindSettingsUI() {
         saveSettingsDebounced();
     });
 
-    $("#emotion_test_connection").on("click", testConnection);
+    $("#emotion_test_connection").on("click", () => testConnection(true));
 
     $("#emotion_prompt_instruction").val(settings.promptInstruction).on("input", function () {
         settings.promptInstruction = String($(this).val());
@@ -340,8 +371,14 @@ eventSource.on(event_types.MESSAGE_SENT, async () => {
                 false,
                 settings.role
             );
+            // The inner thought is hidden from the chat, show it in the settings instead
+            $("#emotion_last_reflection").val(reasoningText);
+            console.debug("Emotion Plugin: Inner thought", reasoningText);
+        } else {
+            toastr.warning("No reflection was generated. Check the backend with Test Connection.", "st-Emotion", { preventDuplicates: true });
         }
     } catch (error) {
         console.error("Emotion Plugin: Error generating the reflection", error);
+        toastr.error(`Reflection failed: ${error.message}`, "st-Emotion", { preventDuplicates: true });
     }
 });

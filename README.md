@@ -30,7 +30,8 @@ Extensions panel → **Emotion Plugin Settings**:
 | Model Name | empty | Sent as `model`; leave empty to use the model loaded on the server (OpenAI-compatible API only) |
 | API Key | empty | Sent as `Authorization: Bearer …` if set (OpenAI-compatible API only) |
 | Max Reflection Length | 512 | Maximum length of the reflection in tokens |
-| Test Connection | – | Checks the selected backend. For the API it sends a one-token request; for WebLLM it only checks availability, so no model is downloaded. Also runs when the page loads. |
+| Test Connection | – | Generates a short test reply with the selected backend and shows the result as a notification, including the model's reply. For WebLLM this loads the model. When the page loads, only a light check runs: it uses no tokens and loads no model. |
+| Last Inner Thought | – | Read-only. Shows the most recent reflection, so you can see what was added to the prompt |
 | Reflection Prompt – Instruction | see below | System prompt for the reflection |
 | Reflection Prompt – Request | see below | The request with the chat messages |
 | Restore default prompt | – | Resets both prompt fields to the default |
@@ -75,7 +76,8 @@ An empty field uses the default. With the OpenAI-compatible API, both parts are 
 
 - SillyTavern waits for the reflection before generating the character's reply. A slow backend or a long reflection delays every reply, so keep **Max Reflection Length** small.
 - The sampling parameters (temperature 1.0, top-p 0.95; for the API also top-k 40, repetition penalty 1.2) are set in `index.js`.
-- If no reflection is generated, for example because the backend is unreachable, the previous inner thought stays in the prompt until you switch chats. Errors are logged to the browser console.
+- If no reflection is generated, for example because the backend is unreachable, a notification appears and the previous inner thought stays in the prompt until you switch chats.
+- Very small models (around 1 GB) give only basic reflections and may refuse dark fictional themes. A clear instruction that the story is fiction helps.
 
 ## Credits
 
