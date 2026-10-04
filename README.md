@@ -1,31 +1,46 @@
 # st-Emotion
-Emotion is a SillyTavern extension designed to offload and delegate emotion and conscience to another LLM generation in order to create more emotionally vivid characters with deeper personalities..
 
-The hope of this project was to have SillyTavern characters to have more depth and personality and one issue that a single LLM generation can't do is reflect. This plugin allows me to tie into a 13b model running an OpenAI compatible endpoint and will allow for asyncronous completion.
-The last few generations of conversation is fed out to the second API endpoint for completion and is used to grade the state of the story and how the character would feel and any inner thoughts, it is then sent privately to the prompt string for the SillyTavern character but is hidden from the user in conversation.
+st-Emotion gives SillyTavern characters an inner voice. Each time you send a message, the last five chat messages are passed to an LLM that reflects on how the character feels about the interaction. The reflection is added to the prompt as `(Inner Thought: …)`, so the character's reply can draw on it. It is not shown in the chat.
 
+## Installation
 
-This is not ready for the mainstream yet, do not install via URL. You will have to modify my files to make this work. 
-1. Install in your SillyTavern\public\scripts\extensions\third-party\ folder.
-2. In index.js change  the IP address to match the IP address and OpenAI compatible API url of your text generation server. To check if the API endpoint is correct, curl the contents of the function below to check if your endpoint is being pointed to correctly. 
-  const response = await fetch("http://localhost:5000/v1/completions", {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                prompt: emotionPrompt,
-                max_tokens: 1200,
-                do_sample: true,
-                temperature: 1.0,
-                top_p: 0.9,
-                top_k: 40,
-                repetition_penalty: 1.0
-            })
-3. Change parameters to whatever you want, I personally hate my prompt but it is an example implementation that will allow for future development and refinement. ToDo:Menu options and sharables. 
+1. Open the Extensions panel in SillyTavern and click **Install extension**.
+2. Enter `https://github.com/X00LA/st-Emotion` and confirm.
 
+The extension folder must be named `st-Emotion`, because the settings page is loaded from that path. Installing via URL takes care of that.
 
+## Backends
 
+Choose where the reflection is generated under **Backend** in the settings:
 
+| Backend | What you need |
+| --- | --- |
+| **OpenAI-compatible API** | A separate server with a text completion endpoint, e.g. LM Studio at `http://127.0.0.1:1234/v1/completions`. The extension sends a `prompt` and reads `choices[0].text` (or `generated_text`), so chat completion (`/v1/chat/completions`) and embedding endpoints do not work. |
+| **WebLLM** | The [WebLLM extension](https://github.com/SillyTavern/Extension-WebLLM) and a browser with WebGPU. The model runs in the browser; choose and download it in the WebLLM settings. Only small models are practical. |
+| **SillyTavern's connected API** | Nothing extra. The reflection uses the API and model SillyTavern is connected to, which costs time and tokens there. |
 
+## Settings
 
+Extensions panel → **Emotion Plugin Settings**:
 
-I am not very good at this. I would really like to expand this with functionality that would use this to allow a Sillytavern character to offload in this way several different brain functions to other nodes as a sort of distributed approach to coherent personality. Any advice or collaboration is welcome.
+| Setting | Default | Description |
+| --- | --- | --- |
+| Backend | OpenAI-compatible API | Where the reflection is generated, see above |
+| API URL | `http://127.0.0.1:1234/v1/completions` | Text completion endpoint (OpenAI-compatible API only) |
+| Model Name | empty | Sent as `model`; leave empty to use the model loaded on the server (OpenAI-compatible API only) |
+| API Key | empty | Sent as `Authorization: Bearer …` if set (OpenAI-compatible API only) |
+| Max Reflection Length | 512 | Maximum length of the reflection in tokens |
+| Test Connection | – | Checks the selected backend. For the API it sends a one-token request; for WebLLM it only checks availability, so no model is downloaded. Also runs when the page loads. |
+| Injection Position | After Main Prompt | Where the inner thought goes: None, Before Main Prompt, After Main Prompt, In-chat @ Depth |
+| Injection Depth | 1 | Depth for In-chat @ Depth |
+| Injected As | System | Role of the injected text: System, User or Assistant |
+
+## Good to know
+
+- SillyTavern waits for the reflection before generating the character's reply. A slow backend or a long reflection delays every reply, so keep **Max Reflection Length** small.
+- The prompt and the sampling parameters (temperature 1.0, top-p 0.95; for the API also top-k 40, repetition penalty 1.2) are set in `index.js`.
+- If no reflection is generated, for example because the backend is unreachable, the previous inner thought stays in the prompt until you switch chats. Errors are logged to the browser console.
+
+## Credits
+
+Original extension and idea by [LeetHappyfeet](https://github.com/LeetHappyfeet/st-Emotion).
