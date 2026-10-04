@@ -11,20 +11,31 @@ import {
     extension_prompt_roles,
     eventSource,
     event_types,
-    saveSettingsDebounced
+    saveSettingsDebounced,
+    generateRaw
 } from "../../../../script.js";
 import { extension_settings, getContext, renderExtensionTemplateAsync } from "../../../extensions.js";
+import { generateWebLlmChatPrompt, isWebLlmSupported } from "../../shared.js";
 
 const MODULE_NAME = "emotion_plugin";
 const TEMPLATE_FOLDER = "third-party/st-Emotion";
 
+// Where the reflection is generated
+const BACKENDS = {
+    API: "api",         // separate OpenAI-compatible text completion endpoint
+    WEBLLM: "webllm",   // in the browser via the WebLLM extension
+    MAIN: "main"        // the API SillyTavern is connected to
+};
+
 const defaultSettings = {
+    backend: BACKENDS.API,
     position: extension_prompt_types.IN_PROMPT,
     depth: 1,
     role: extension_prompt_roles.SYSTEM,
     apiUrl: "http://127.0.0.1:1234/v1/completions",
-    model: "llama-3.1-8b-lexi-v2",
-    apiKey: ""
+    model: "",
+    apiKey: "",
+    maxTokens: 512
 };
 
 function buildHeaders(settings) {
@@ -50,10 +61,34 @@ function loadSettings() {
 async function testConnection() {
     const settings = extension_settings[MODULE_NAME];
     const $status = $("#emotion_connection_status");
+    const setStatus = (ok, text) => {
+        $status.removeClass("emotion-status-ok emotion-status-fail")
+            .addClass(ok ? "emotion-status-ok" : "emotion-status-fail")
+            .text(text);
+    };
     $status.removeClass("emotion-status-ok emotion-status-fail").text("Testing connection...");
 
+    if (settings.backend === BACKENDS.WEBLLM) {
+        // Only check availability, a test generation would start the model download
+        if (isWebLlmSupported()) {
+            setStatus(true, "WebLLM extension available");
+        } else {
+            setStatus(false, "WebLLM not available (extension missing or no WebGPU)");
+        }
+        return;
+    }
+
+    if (settings.backend === BACKENDS.MAIN) {
+        if (getContext().onlineStatus === "no_connection") {
+            setStatus(false, "SillyTavern is not connected to an API");
+        } else {
+            setStatus(true, "Using SillyTavern's connected API");
+        }
+        return;
+    }
+
     if (!settings.apiUrl) {
-        $status.addClass("emotion-status-fail").text("No API URL set");
+        setStatus(false, "No API URL set");
         return;
     }
 
@@ -82,15 +117,29 @@ async function testConnection() {
             throw new Error("unexpected response format");
         }
 
-        $status.addClass("emotion-status-ok").text("Connected – endpoint responded correctly");
+        setStatus(true, "Connected – endpoint responded correctly");
     } catch (error) {
         console.error("Emotion Plugin: Connection test failed", error);
-        $status.addClass("emotion-status-fail").text(`Connection failed (${error.message})`);
+        setStatus(false, `Connection failed (${error.message})`);
     }
+}
+
+function updateBackendUI(backend) {
+    $("#emotion_api_settings").toggle(backend === BACKENDS.API);
+    $("#emotion_webllm_hint").toggle(backend === BACKENDS.WEBLLM);
+    $("#emotion_main_hint").toggle(backend === BACKENDS.MAIN);
 }
 
 function bindSettingsUI() {
     const settings = extension_settings[MODULE_NAME];
+
+    $("#emotion_backend").val(settings.backend).on("change", function () {
+        settings.backend = String($(this).val());
+        saveSettingsDebounced();
+        updateBackendUI(settings.backend);
+        testConnection();
+    });
+    updateBackendUI(settings.backend);
 
     $("#emotion_api_url").val(settings.apiUrl).on("input", function () {
         settings.apiUrl = String($(this).val());
@@ -104,6 +153,11 @@ function bindSettingsUI() {
 
     $("#emotion_api_key").val(settings.apiKey).on("input", function () {
         settings.apiKey = String($(this).val());
+        saveSettingsDebounced();
+    });
+
+    $("#emotion_max_tokens").val(settings.maxTokens).on("input", function () {
+        settings.maxTokens = Number($(this).val());
         saveSettingsDebounced();
     });
 
@@ -132,6 +186,68 @@ jQuery(async () => {
     bindSettingsUI();
     testConnection();
 });
+
+// SillyTavern connects to its API after the extensions are loaded
+eventSource.on(event_types.ONLINE_STATUS_CHANGED, () => {
+    if (extension_settings[MODULE_NAME]?.backend === BACKENDS.MAIN) {
+        testConnection();
+    }
+});
+
+/**
+ * Generates the reflection with the selected backend.
+ * @param {object} settings Extension settings
+ * @param {string} instruction What to reflect on
+ * @param {string} request The conversation and the question about it
+ * @returns {Promise<string>} The reflection, empty if nothing was generated
+ */
+async function generateReflection(settings, instruction, request) {
+    const maxTokens = settings.maxTokens > 0 ? settings.maxTokens : defaultSettings.maxTokens;
+
+    if (settings.backend === BACKENDS.WEBLLM) {
+        if (!isWebLlmSupported()) return "";
+        const messages = [
+            { role: "system", content: instruction },
+            { role: "user", content: request }
+        ];
+        return await generateWebLlmChatPrompt(messages, { max_tokens: maxTokens, temperature: 1.0, top_p: 0.95 }) ?? "";
+    }
+
+    if (settings.backend === BACKENDS.MAIN) {
+        return await generateRaw({ systemPrompt: instruction, prompt: request, responseLength: maxTokens }) ?? "";
+    }
+
+    const body = {
+        prompt: `
+### Instruction:
+${instruction}
+${request}
+
+### Response:
+`,
+        max_tokens: maxTokens,
+        do_sample: true,
+        temperature: 1.0,
+        top_p: 0.95,
+        top_k: 40,
+        repetition_penalty: 1.2
+    };
+    if (settings.model) {
+        body.model = settings.model;
+    }
+
+    const response = await fetch(settings.apiUrl, {
+        method: 'POST',
+        headers: buildHeaders(settings),
+        body: JSON.stringify(body)
+    });
+    if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+    }
+
+    const result = await response.json();
+    return result?.generated_text || result?.choices?.[0]?.text || "";
+}
 
 // Main emotion hook
 
@@ -167,40 +283,15 @@ eventSource.on(event_types.MESSAGE_SENT, async () => {
         }
     }
 
-    const emotionPrompt = `
-### Instruction:
-Given the interaction between ${userName} (the user) and ${charName} (the character), reflect on the emotional tone in their conversation.
-Based on the text below:
+    const instruction = `Given the interaction between ${userName} (the user) and ${charName} (the character), reflect on the emotional tone in their conversation.`;
+    const request = `Based on the text below:
 
 ${formattedMessages}
 
-How should ${charName} be feeling about this interaction? Provide a thoughtful emotional analysis.
-
-### Response:
-`;
+How should ${charName} be feeling about this interaction? Provide a thoughtful emotional analysis.`;
 
     try {
-        const body = {
-            prompt: emotionPrompt,
-            max_tokens: 2048,
-            do_sample: true,
-            temperature: 1.0,
-            top_p: 0.95,
-            top_k: 40,
-            repetition_penalty: 1.2
-        };
-        if (settings.model) {
-            body.model = settings.model;
-        }
-
-        const response = await fetch(settings.apiUrl, {
-            method: 'POST',
-            headers: buildHeaders(settings),
-            body: JSON.stringify(body)
-        });
-
-        const result = await response.json();
-        let reasoningText = result?.generated_text?.trim() || result?.choices?.[0]?.text?.trim();
+        const reasoningText = (await generateReflection(settings, instruction, request))?.trim();
 
         if (reasoningText) {
             setExtensionPrompt(
@@ -213,6 +304,6 @@ How should ${charName} be feeling about this interaction? Provide a thoughtful e
             );
         }
     } catch (error) {
-        console.error("Emotion Plugin: Error calling local LLM endpoint", error);
+        console.error("Emotion Plugin: Error generating the reflection", error);
     }
 });

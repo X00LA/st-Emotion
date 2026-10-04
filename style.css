@@ -10,3 +10,9 @@
 #emotion_connection_status.emotion-status-fail {
     color: #f44336;
 }
+
+#emotion_settings .emotion_hint {
+    display: block;
+    margin: 5px 0;
+    opacity: 0.8;
+}
