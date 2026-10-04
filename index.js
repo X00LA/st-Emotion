@@ -27,6 +27,14 @@ const BACKENDS = {
     MAIN: "main"        // the API SillyTavern is connected to
 };
 
+// Default reflection prompt, {{user}}, {{char}} and {{messages}} are filled in per message
+const DEFAULT_INSTRUCTION = "Given the interaction between {{user}} (the user) and {{char}} (the character), reflect on the emotional tone in their conversation.";
+const DEFAULT_REQUEST = `Based on the text below:
+
+{{messages}}
+
+How should {{char}} be feeling about this interaction? Provide a thoughtful emotional analysis.`;
+
 const defaultSettings = {
     backend: BACKENDS.API,
     position: extension_prompt_types.IN_PROMPT,
@@ -35,8 +43,21 @@ const defaultSettings = {
     apiUrl: "http://127.0.0.1:1234/v1/completions",
     model: "",
     apiKey: "",
-    maxTokens: 512
+    maxTokens: 512,
+    promptInstruction: DEFAULT_INSTRUCTION,
+    promptRequest: DEFAULT_REQUEST
 };
+
+/**
+ * Fills in the placeholders of a prompt template in a single pass,
+ * so placeholders that appear inside the chat messages stay untouched.
+ * @param {string} template Prompt template
+ * @param {{user: string, char: string, messages: string}} values Placeholder values
+ * @returns {string} Filled prompt
+ */
+function fillPrompt(template, values) {
+    return template.replace(/\{\{(user|char|messages)\}\}/gi, (_, key) => values[key.toLowerCase()]);
+}
 
 function buildHeaders(settings) {
     const headers = { "Content-Type": "application/json" };
@@ -177,6 +198,25 @@ function bindSettingsUI() {
     });
 
     $("#emotion_test_connection").on("click", testConnection);
+
+    $("#emotion_prompt_instruction").val(settings.promptInstruction).on("input", function () {
+        settings.promptInstruction = String($(this).val());
+        saveSettingsDebounced();
+    });
+
+    $("#emotion_prompt_request").val(settings.promptRequest).on("input", function () {
+        settings.promptRequest = String($(this).val());
+        saveSettingsDebounced();
+    });
+
+    $("#emotion_prompt_reset").on("click", function () {
+        if (!confirm("Restore the default reflection prompt? Your changes will be lost.")) return;
+        settings.promptInstruction = DEFAULT_INSTRUCTION;
+        settings.promptRequest = DEFAULT_REQUEST;
+        $("#emotion_prompt_instruction").val(settings.promptInstruction);
+        $("#emotion_prompt_request").val(settings.promptRequest);
+        saveSettingsDebounced();
+    });
 }
 
 jQuery(async () => {
@@ -283,12 +323,10 @@ eventSource.on(event_types.MESSAGE_SENT, async () => {
         }
     }
 
-    const instruction = `Given the interaction between ${userName} (the user) and ${charName} (the character), reflect on the emotional tone in their conversation.`;
-    const request = `Based on the text below:
-
-${formattedMessages}
-
-How should ${charName} be feeling about this interaction? Provide a thoughtful emotional analysis.`;
+    // An emptied prompt field falls back to the default
+    const values = { user: userName, char: charName, messages: formattedMessages };
+    const instruction = fillPrompt(settings.promptInstruction?.trim() ? settings.promptInstruction : DEFAULT_INSTRUCTION, values);
+    const request = fillPrompt(settings.promptRequest?.trim() ? settings.promptRequest : DEFAULT_REQUEST, values);
 
     try {
         const reasoningText = (await generateReflection(settings, instruction, request))?.trim();

@@ -31,14 +31,50 @@ Extensions panel → **Emotion Plugin Settings**:
 | API Key | empty | Sent as `Authorization: Bearer …` if set (OpenAI-compatible API only) |
 | Max Reflection Length | 512 | Maximum length of the reflection in tokens |
 | Test Connection | – | Checks the selected backend. For the API it sends a one-token request; for WebLLM it only checks availability, so no model is downloaded. Also runs when the page loads. |
+| Reflection Prompt – Instruction | see below | System prompt for the reflection |
+| Reflection Prompt – Request | see below | The request with the chat messages |
+| Restore default prompt | – | Resets both prompt fields to the default |
 | Injection Position | After Main Prompt | Where the inner thought goes: None, Before Main Prompt, After Main Prompt, In-chat @ Depth |
 | Injection Depth | 1 | Depth for In-chat @ Depth |
 | Injected As | System | Role of the injected text: System, User or Assistant |
 
+## Reflection prompt
+
+The prompt that asks for the reflection can be edited in the settings. It has two parts:
+
+- **Instruction**, sent as the system prompt
+- **Request**, the actual request with the chat messages
+
+Placeholders, filled in for each message:
+
+| Placeholder | Replaced with |
+| --- | --- |
+| `{{user}}` | The user's name |
+| `{{char}}` | The character's name |
+| `{{messages}}` | The last five chat messages, one per line as `[Name] text` |
+
+Default instruction:
+
+```text
+Given the interaction between {{user}} (the user) and {{char}} (the character), reflect on the emotional tone in their conversation.
+```
+
+Default request:
+
+```text
+Based on the text below:
+
+{{messages}}
+
+How should {{char}} be feeling about this interaction? Provide a thoughtful emotional analysis.
+```
+
+An empty field uses the default. With the OpenAI-compatible API, both parts are combined into one text prompt in the format `### Instruction:` … `### Response:`.
+
 ## Good to know
 
 - SillyTavern waits for the reflection before generating the character's reply. A slow backend or a long reflection delays every reply, so keep **Max Reflection Length** small.
-- The prompt and the sampling parameters (temperature 1.0, top-p 0.95; for the API also top-k 40, repetition penalty 1.2) are set in `index.js`.
+- The sampling parameters (temperature 1.0, top-p 0.95; for the API also top-k 40, repetition penalty 1.2) are set in `index.js`.
 - If no reflection is generated, for example because the backend is unreachable, the previous inner thought stays in the prompt until you switch chats. Errors are logged to the browser console.
 
 ## Credits

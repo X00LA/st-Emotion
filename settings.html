@@ -38,6 +38,17 @@
 
       <hr>
 
+      <label for="emotion_prompt_instruction">Reflection Prompt – Instruction (system prompt):</label>
+      <textarea id="emotion_prompt_instruction" class="text_pole textarea_compact" rows="3"></textarea>
+
+      <label for="emotion_prompt_request">Reflection Prompt – Request:</label>
+      <textarea id="emotion_prompt_request" class="text_pole textarea_compact" rows="6"></textarea>
+
+      <small class="emotion_hint">Placeholders: <code>\{{user}}</code> user name, <code>\{{char}}</code> character name, <code>\{{messages}}</code> the last five chat messages. An empty field uses the default.</small>
+      <input id="emotion_prompt_reset" class="menu_button" type="button" value="Restore default prompt" />
+
+      <hr>
+
       <label for="emotion_position">Injection Position:</label>
       <select id="emotion_position">
         <option value="-1">None</option>
