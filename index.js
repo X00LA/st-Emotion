@@ -67,6 +67,22 @@ function buildHeaders(settings) {
     return headers;
 }
 
+// Chat completion endpoints (e.g. /v1/chat/completions) expect messages instead of a single text prompt
+function isChatEndpoint(url) {
+    return /\/chat\/completions\/?(\?.*)?$/i.test(String(url ?? "").trim());
+}
+
+/**
+ * Reads the generated text from a completion or chat completion response.
+ * @param {any} data Parsed response
+ * @returns {string|undefined} Generated text, undefined for an unknown response format
+ */
+function readCompletionText(data) {
+    const choice = data?.choices?.[0];
+    if (choice?.message) return choice.message.content ?? "";
+    return choice?.text ?? data?.generated_text;
+}
+
 function loadSettings() {
     if (!extension_settings[MODULE_NAME]) {
         extension_settings[MODULE_NAME] = structuredClone(defaultSettings);
@@ -141,10 +157,11 @@ async function testConnection(manual = false) {
             return;
         }
 
-        const body = {
-            prompt: manual ? TEST_PROMPT : "Hi",
-            max_tokens: manual ? 10 : 1
-        };
+        const testText = manual ? TEST_PROMPT : "Hi";
+        const body = isChatEndpoint(settings.apiUrl)
+            ? { messages: [{ role: "user", content: testText }] }
+            : { prompt: testText };
+        body.max_tokens = manual ? 10 : 1;
         if (settings.model) {
             body.model = settings.model;
         }
@@ -160,9 +177,9 @@ async function testConnection(manual = false) {
         }
 
         const data = await response.json();
-        const reply = data?.choices?.[0]?.text ?? data?.generated_text;
+        const reply = readCompletionText(data);
         if (reply === undefined) {
-            throw new Error("unexpected response format, is this a text completion endpoint?");
+            throw new Error("unexpected response format, is this a completions or chat completions endpoint?");
         }
 
         if (manual) {
@@ -288,21 +305,30 @@ async function generateReflection(settings, instruction, request) {
         return await generateRaw({ systemPrompt: instruction, prompt: request, responseLength: maxTokens }) ?? "";
     }
 
-    const body = {
-        prompt: `
+    const body = isChatEndpoint(settings.apiUrl)
+        ? {
+            messages: [
+                { role: "system", content: instruction },
+                { role: "user", content: request }
+            ]
+        }
+        : {
+            prompt: `
 ### Instruction:
 ${instruction}
 ${request}
 
 ### Response:
-`,
+`
+        };
+    Object.assign(body, {
         max_tokens: maxTokens,
         do_sample: true,
         temperature: 1.0,
         top_p: 0.95,
         top_k: 40,
         repetition_penalty: 1.2
-    };
+    });
     if (settings.model) {
         body.model = settings.model;
     }
@@ -317,7 +343,7 @@ ${request}
     }
 
     const result = await response.json();
-    return result?.generated_text || result?.choices?.[0]?.text || "";
+    return readCompletionText(result) || "";
 }
 
 // Main emotion hook

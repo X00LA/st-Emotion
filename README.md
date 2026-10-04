@@ -15,7 +15,7 @@ Choose where the reflection is generated under **Backend** in the settings:
 
 | Backend | What you need |
 | --- | --- |
-| **OpenAI-compatible API** | A separate server with a text completion endpoint, e.g. LM Studio at `http://127.0.0.1:1234/v1/completions`. The extension sends a `prompt` and reads `choices[0].text` (or `generated_text`), so chat completion (`/v1/chat/completions`) and embedding endpoints do not work. |
+| **OpenAI-compatible API** | A separate server such as LM Studio. Both endpoint types work: `/v1/chat/completions` (recommended for instruct models, because the server applies the model's chat template) and `/v1/completions` (plain text prompt). The type is detected from the URL. Embedding endpoints do not work. |
 | **WebLLM** | The [WebLLM extension](https://github.com/SillyTavern/Extension-WebLLM) and a browser with WebGPU. The model runs in the browser; choose and download it in the WebLLM settings. Only small models are practical. |
 | **SillyTavern's connected API** | Nothing extra. The reflection uses the API and model SillyTavern is connected to, which costs time and tokens there. |
 
@@ -26,7 +26,7 @@ Extensions panel → **Emotion Plugin Settings**:
 | Setting | Default | Description |
 | --- | --- | --- |
 | Backend | OpenAI-compatible API | Where the reflection is generated, see above |
-| API URL | `http://127.0.0.1:1234/v1/completions` | Text completion endpoint (OpenAI-compatible API only) |
+| API URL | `http://127.0.0.1:1234/v1/completions` | Completions or chat completions endpoint (OpenAI-compatible API only) |
 | Model Name | empty | Sent as `model`; leave empty to use the model loaded on the server (OpenAI-compatible API only) |
 | API Key | empty | Sent as `Authorization: Bearer …` if set (OpenAI-compatible API only) |
 | Max Reflection Length | 512 | Maximum length of the reflection in tokens |
@@ -70,7 +70,7 @@ Based on the text below:
 How should {{char}} be feeling about this interaction? Provide a thoughtful emotional analysis.
 ```
 
-An empty field uses the default. With the OpenAI-compatible API, both parts are combined into one text prompt in the format `### Instruction:` … `### Response:`.
+An empty field uses the default. Chat endpoints, WebLLM and SillyTavern's API receive the two parts as system and user message. A `/v1/completions` endpoint receives them combined into one text prompt in the format `### Instruction:` … `### Response:`.
 
 ## Good to know
 
